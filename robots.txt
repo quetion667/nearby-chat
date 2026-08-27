@@ -1,0 +1,4 @@
+# Preview build. Delete this file (and the noindex meta in index.html) once the
+# Telegram link in js/copy.js points at the real bot.
+User-agent: *
+Disallow: /

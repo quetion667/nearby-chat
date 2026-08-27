@@ -1,0 +1,773 @@
+:root {
+  --bg: #191420;
+  --ink: #f7efe6;
+  --muted: rgba(247, 239, 230, 0.56);
+  --faint: rgba(247, 239, 230, 0.34);
+  --accent: #ffb07a;
+  --serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+* { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-weight: 300;
+  font-size: clamp(15px, 1.05vw, 17px);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  /* The whole page is a press-and-hold surface. Pull-to-refresh would fire
+     the moment someone holds near the top and drifts downwards. */
+  overscroll-behavior-y: contain;
+}
+
+::selection {
+  background: rgba(255, 176, 122, 0.25);
+}
+
+/* ------------------------------------------------------------ the entity */
+
+/* A canvas is a replaced element, so inset:0 would leave it at its intrinsic
+   300x150 — it needs real dimensions. 100% of the viewport rather than 100vw
+   (which counts the scrollbar), and dvh so a collapsing mobile address bar
+   cannot leave a strip of flat background under the page. JS only sizes the
+   drawing buffer; CSS owns the element. */
+#stage {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 0;
+  display: block;
+  touch-action: pan-y;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#stage.is-hidden { display: none; }
+
+.fallback-host {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.css-entity {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(120% 90% at 50% 100%, rgba(88, 44, 32, 0.55), transparent 70%),
+    linear-gradient(180deg, #1b1524, #221a24);
+}
+
+.css-entity__blob,
+.css-entity__ring {
+  position: absolute;
+  width: calc(var(--unit, 100px) * 0.52);
+  height: calc(var(--unit, 100px) * 0.52);
+}
+
+.css-entity__blob {
+  background:
+    radial-gradient(45% 45% at 50% 55%, rgba(var(--col-c, 255, 185, 143), 0.85), transparent 72%),
+    radial-gradient(60% 60% at 38% 32%, rgba(var(--col-b, 194, 174, 242), 0.8), transparent 70%),
+    radial-gradient(80% 80% at 60% 70%, rgba(var(--col-a, 70, 51, 88), 0.95), transparent 72%);
+  box-shadow: 0 0 calc(var(--unit, 100px) * 0.12) rgba(var(--col-b, 194, 174, 242), 0.25);
+}
+
+.css-entity__ring {
+  border: 1px solid rgba(var(--col-b, 194, 174, 242), 0.5);
+  border-radius: 50%;
+  opacity: 0;
+}
+
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0.075;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* -------------------------------------------------------- the hold ring */
+
+/* A fixed 400px box that JS moves and scales; opacity is driven per frame. */
+.ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 400px;
+  height: 400px;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+
+.ring__track,
+.ring__arc {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.ring__track {
+  stroke: rgba(247, 239, 230, 0.22);
+  stroke-width: 0.4;
+}
+
+.ring__arc {
+  stroke: var(--accent);
+  stroke-width: 0.5;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  filter: drop-shadow(0 0 3px rgba(255, 176, 122, 0.55));
+}
+
+.ring.is-live .ring__arc {
+  stroke-width: 0.7;
+}
+
+/* ------------------------------------------------------------- top bar */
+
+.topbar {
+  position: fixed;
+  z-index: 20;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* viewport-fit=cover puts the page under the notch, so the insets are
+     not optional here. */
+  padding: calc(clamp(14px, 3vh, 34px) + env(safe-area-inset-top, 0px))
+           calc(clamp(20px, 4vw, 52px) + env(safe-area-inset-right, 0px))
+           clamp(14px, 3vh, 34px)
+           calc(clamp(20px, 4vw, 52px) + env(safe-area-inset-left, 0px));
+  pointer-events: none;
+}
+
+.topbar > * { pointer-events: auto; }
+
+.wordmark {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--ink);
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 240ms var(--ease);
+}
+
+.wordmark:hover { opacity: 1; }
+
+.ghost-button {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  text-transform: lowercase;
+  cursor: pointer;
+  touch-action: manipulation;
+  /* A 12px label needs a finger-sized target around it. */
+  padding: 10px 4px;
+  min-height: 40px;
+  transition: color 240ms var(--ease), opacity 240ms var(--ease);
+}
+
+.ghost-button:hover,
+.ghost-button:focus-visible { color: var(--ink); }
+
+.is-hidden { display: none !important; }
+
+/* ---------------------------------------------------------------- hero */
+
+.hero {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 calc(clamp(18px, 5vw, 48px) + env(safe-area-inset-right, 0px))
+             calc(clamp(24px, 6vh, 64px) + env(safe-area-inset-bottom, 0px))
+             calc(clamp(18px, 5vw, 48px) + env(safe-area-inset-left, 0px));
+  pointer-events: none;
+}
+
+.hero__ui {
+  width: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  text-align: center;
+  transition: opacity 200ms linear;
+  /* A long press must not select the sentence underneath it. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.hero__ui > * { pointer-events: auto; }
+
+.question,
+.voice {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: 0.005em;
+  /* The words often sit over the body, so they carry their own contrast. */
+  text-shadow: 0 2px 30px rgba(20, 14, 26, 0.72), 0 0 60px rgba(20, 14, 26, 0.52);
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 700ms var(--ease), transform 700ms var(--ease);
+}
+
+.step {
+  margin: 0 0 10px;
+  min-height: 1.2em;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--faint);
+  opacity: 0;
+  transition: opacity 500ms var(--ease);
+}
+
+.step.is-in { opacity: 1; }
+
+.question {
+  font-size: clamp(26px, 4.2vw, 42px);
+  min-height: 1.3em;
+  max-width: 22ch;
+}
+
+.voice {
+  font-size: clamp(22px, 3.4vw, 34px);
+  min-height: 1.4em;
+  color: rgba(247, 239, 230, 0.94);
+}
+
+.question.is-in,
+.voice.is-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: clamp(10px, 1.6vw, 18px);
+  margin-top: clamp(18px, 3vh, 30px);
+  opacity: 0;
+  transform: translateY(12px);
+  pointer-events: none;
+  transition: opacity 520ms var(--ease), transform 520ms var(--ease);
+}
+
+.choices.is-in {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.choice {
+  appearance: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  padding: 12px 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(247, 239, 230, 0.18);
+  background: rgba(247, 239, 230, 0.04);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(6px);
+  transition: border-color 300ms var(--ease), background 300ms var(--ease),
+    transform 300ms var(--ease), box-shadow 300ms var(--ease);
+  animation: rise 620ms var(--ease) both;
+  animation-delay: var(--delay, 0ms);
+}
+
+.choice:hover,
+.choice:focus-visible {
+  border-color: rgba(255, 176, 122, 0.55);
+  background: rgba(255, 176, 122, 0.09);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px -18px rgba(255, 176, 122, 0.9);
+  outline: none;
+}
+
+.choice:active { transform: translateY(0); }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.promises {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 800ms var(--ease), max-height 800ms var(--ease);
+}
+
+.promises.is-in {
+  opacity: 1;
+  max-height: 40vh;
+}
+
+.promise {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(19px, 2.6vw, 27px);
+  line-height: 1.35;
+  color: rgba(247, 239, 230, 0.92);
+  text-shadow: 0 2px 30px rgba(20, 14, 26, 0.72), 0 0 60px rgba(20, 14, 26, 0.52);
+  animation: rise 900ms var(--ease) both;
+  animation-delay: var(--delay, 0ms);
+}
+
+.cta-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: clamp(20px, 3.4vh, 34px);
+  opacity: 0;
+  transform: translateY(14px);
+  pointer-events: none;
+  transition: opacity 700ms var(--ease) 240ms, transform 700ms var(--ease) 240ms;
+}
+
+.cta-block.is-in {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  touch-action: manipulation;
+  padding: 14px 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 176, 122, 0.42);
+  background: rgba(255, 176, 122, 0.08);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  backdrop-filter: blur(8px);
+  transition: background 320ms var(--ease), border-color 320ms var(--ease),
+    transform 320ms var(--ease), box-shadow 320ms var(--ease);
+}
+
+.cta:hover,
+.cta:focus-visible {
+  background: rgba(255, 176, 122, 0.16);
+  border-color: rgba(255, 176, 122, 0.8);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 44px -24px rgba(255, 176, 122, 1);
+  outline: none;
+}
+
+.cta__arrow {
+  transition: transform 320ms var(--ease);
+}
+
+.cta:hover .cta__arrow { transform: translateX(4px); }
+
+.cta--small {
+  padding: 11px 22px;
+  font-size: 14px;
+}
+
+.cta-note,
+.hint {
+  margin: 0;
+  font-size: 12.5px;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.hint {
+  margin-top: clamp(14px, 2.4vh, 24px);
+  min-height: 1.4em;
+  opacity: 0;
+  transition: opacity 800ms var(--ease);
+}
+
+.hint.is-in { opacity: 1; }
+
+.scroll-cue {
+  margin-top: clamp(10px, 2vh, 20px);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: lowercase;
+  color: var(--faint);
+  opacity: 0;
+  transition: opacity 900ms var(--ease) 700ms;
+}
+
+.scroll-cue.is-in { opacity: 1; }
+
+.scroll-cue span {
+  display: inline-block;
+  animation: drift 2.8s var(--ease) infinite;
+}
+
+@keyframes drift {
+  0%, 100% { transform: translateY(0); opacity: 0.6; }
+  50% { transform: translateY(4px); opacity: 1; }
+}
+
+/* ------------------------------------------------------------- content */
+
+.page {
+  position: relative;
+  z-index: 2;
+  background:
+    linear-gradient(180deg, rgba(25, 20, 32, 0) 0%, rgba(25, 20, 32, 0.87) 9vh, rgba(25, 20, 32, 0.9) 100%);
+}
+
+.sections {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(60px, 14vh, 160px) clamp(22px, 8vw, 120px) clamp(40px, 8vh, 90px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(70px, 13vh, 150px);
+}
+
+.section {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr);
+  column-gap: clamp(14px, 3vw, 40px);
+  row-gap: 0;
+  max-width: 780px;
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 900ms var(--ease), transform 900ms var(--ease);
+}
+
+.section.is-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.section:nth-child(even) {
+  margin-left: auto;
+}
+
+.section__kicker {
+  grid-column: 1;
+  grid-row: 1;
+  margin: 0.9em 0 0;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  color: var(--faint);
+}
+
+.section__title {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0 0 0.5em;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(30px, 4.6vw, 52px);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.section__body {
+  grid-column: 2;
+  margin: 0 0 1.1em;
+  max-width: 58ch;
+  color: rgba(247, 239, 230, 0.74);
+  font-size: clamp(15px, 1.2vw, 17.5px);
+  line-height: 1.75;
+}
+
+.section__body:last-child { margin-bottom: 0; }
+
+/* -------------------------------------------------------------- footer */
+
+.footer {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(50px, 10vh, 110px) clamp(22px, 8vw, 120px) clamp(50px, 9vh, 100px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  border-top: 1px solid rgba(247, 239, 230, 0.10);
+}
+
+.footer__wordmark {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: clamp(38px, 7vw, 74px);
+  line-height: 1;
+  letter-spacing: -0.015em;
+}
+
+.footer__meaning {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  color: var(--faint);
+}
+
+.footer__note {
+  margin: 6px 0 18px;
+  max-width: 42ch;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------ responsive */
+
+@media (max-width: 720px) {
+  .section {
+    grid-template-columns: 1fr;
+  }
+  .section__kicker { grid-column: 1; grid-row: auto; margin: 0 0 6px; }
+  .section__title { grid-column: 1; grid-row: auto; }
+  .section__body { grid-column: 1; }
+  .hero { align-items: flex-end; }
+  .footer { align-items: flex-start; }
+}
+
+/* Phones. The stack has to clear the entity without shrinking to nothing. */
+@media (max-width: 480px) {
+  .choices { gap: 8px; margin-top: clamp(14px, 2.4vh, 22px); }
+  .choice { padding: 13px 18px; font-size: 13.5px; }
+  .promise { font-size: 18px; }
+  .cta { padding: 15px 24px; font-size: 14.5px; }
+  .cta-block { margin-top: clamp(16px, 2.6vh, 26px); }
+  .promises.is-in { max-height: 46vh; }
+  .sections { gap: clamp(56px, 10vh, 90px); }
+}
+
+/* Landscape phones: roughly 360px of height for everything at once. */
+@media (max-height: 560px) and (orientation: landscape) {
+  .step { margin-bottom: 4px; }
+  .question { font-size: clamp(19px, 3.4vw, 28px); }
+  .voice { font-size: clamp(17px, 3vw, 24px); }
+  .promise { font-size: clamp(15px, 2.2vw, 19px); }
+  .choices { margin-top: 10px; }
+  .choice { padding: 9px 16px; font-size: 13px; }
+  .cta { padding: 10px 20px; font-size: 14px; }
+  .cta-block { margin-top: 12px; gap: 7px; }
+  .hint { margin-top: 8px; }
+  .scroll-cue { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .section {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .scroll-cue span { animation: none; }
+  .choice, .promise { animation: none; }
+}
+
+/* -------------------------------------------------------------- the chat */
+/* A panel, not a page: the entity stays alive behind it, because the whole
+   promise is that you are talking to the thing you just woke up. */
+
+.chat {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: end center;
+  padding: clamp(12px, 3vh, 32px);
+  padding-bottom: max(clamp(12px, 3vh, 32px), env(safe-area-inset-bottom));
+  background: rgba(12, 9, 16, 0.58);
+  backdrop-filter: blur(6px);
+}
+
+.chat[hidden] { display: none; }
+
+.chat__panel {
+  width: min(560px, 100%);
+  max-height: min(72vh, 640px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(247, 239, 230, 0.14);
+  border-radius: 18px;
+  background: rgba(25, 20, 32, 0.94);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: chat-in 0.32s var(--ease) both;
+}
+
+@keyframes chat-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.chat__bar {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(247, 239, 230, 0.1);
+}
+
+.chat__title {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  letter-spacing: 0.01em;
+}
+
+.chat__remaining {
+  margin: 0 0 0 auto;
+  font-size: 0.78rem;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat__log {
+  flex: 1;
+  min-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat__msg {
+  margin: 0;
+  max-width: 82%;
+  padding: 9px 13px;
+  border-radius: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  animation: chat-msg 0.24s var(--ease) both;
+}
+
+@keyframes chat-msg {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.chat__msg--you {
+  align-self: flex-end;
+  background: rgba(255, 176, 122, 0.16);
+  border: 1px solid rgba(255, 176, 122, 0.22);
+}
+
+.chat__msg--them {
+  align-self: flex-start;
+  background: rgba(247, 239, 230, 0.07);
+  border: 1px solid rgba(247, 239, 230, 0.08);
+}
+
+/* Never a speech bubble: the page talking, not the entity. */
+.chat__msg--note {
+  align-self: center;
+  max-width: 100%;
+  padding: 4px 0;
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--faint);
+  background: none;
+  border: none;
+}
+
+.chat__form {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(247, 239, 230, 0.1);
+}
+
+.chat__input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(247, 239, 230, 0.16);
+  background: rgba(247, 239, 230, 0.05);
+  color: var(--ink);
+  font: inherit;
+}
+
+.chat__input::placeholder { color: var(--faint); }
+.chat__input:focus-visible { outline: 2px solid rgba(255, 176, 122, 0.5); outline-offset: 1px; }
+.chat__input:disabled { opacity: 0.5; }
+
+.chat__send {
+  padding: 11px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 176, 122, 0.35);
+  background: rgba(255, 176, 122, 0.16);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chat__send:disabled { opacity: 0.45; cursor: default; }
+
+.chat__note {
+  margin: 0;
+  padding: 0 16px 14px;
+  font-size: 0.74rem;
+  color: var(--faint);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat__panel, .chat__msg { animation: none; }
+}
