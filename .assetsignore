@@ -1,0 +1,14 @@
+# Repository and Wrangler internals must never become public site assets.
+**/.git
+**/.git/**
+**/.wrangler
+**/.wrangler/**
+.gitignore
+.assetsignore
+wrangler.jsonc
+
+# Project-only documentation and local development helpers.
+README.md
+DEPLOY.md
+PROMPT.md
+serve.py
