@@ -3,6 +3,8 @@
 **/.git/**
 **/.wrangler
 **/.wrangler/**
+**/node_modules
+**/node_modules/**
 .gitignore
 .assetsignore
 wrangler.jsonc

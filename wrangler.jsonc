@@ -1,0 +1,27 @@
+{
+  // Committed on purpose. Without this file wrangler generates one at deploy
+  // time from whatever it guesses, which is how the first deploy ended up
+  // uploading `.git/` — see .assetsignore.
+  //
+  // This Worker serves the static page and nothing else. The chat API is the
+  // Python service in the Ryadom repository and lives on its own host at
+  // api.talktonearby.com; nothing here proxies to it. The browser calls it
+  // directly, cross-origin, which is why WEB_CHAT_ALLOWED_ORIGINS on that
+  // service must name this page's exact origin.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nearby-chat",
+  "compatibility_date": "2026-08-26",
+  "assets": {
+    "directory": "."
+  },
+  "observability": {
+    "enabled": true
+  },
+  // Preview URLs are disabled so that every commit does not mint another
+  // publicly reachable, indexable copy of the page.
+  "preview_urls": false,
+  // Left on until talktonearby.com is attached and verified. Turn it off then:
+  // two live addresses for one page is a duplicate nobody needs, and the
+  // workers.dev one is the address we do not control the name of.
+  "workers_dev": true
+}

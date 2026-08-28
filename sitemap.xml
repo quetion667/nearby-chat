@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- One page, one entry. It exists so robots.txt does not point at a 404. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://talktonearby.com/</loc>
+    <lastmod>2026-08-28</lastmod>
+  </url>
+</urlset>

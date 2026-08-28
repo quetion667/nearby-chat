@@ -2,10 +2,12 @@
 // without touching the machinery.
 
 export const CONFIG = {
-  // Where the chat endpoint lives. Empty means same origin, which is only
-  // true when the API is served behind the same host as this page. Set it
-  // before showing the page to anyone; there is nothing to talk to until then.
-  apiBase: '',
+  // Where the chat endpoint lives. The page is static and served from a CDN;
+  // the API is the Python service, which needs a host of its own. They are
+  // different origins on purpose, so this is set rather than empty — and the
+  // API must name this page's origin in WEB_CHAT_ALLOWED_ORIGINS or every
+  // call is refused by CORS before it reaches the router.
+  apiBase: 'https://api.talktonearby.com',
   // Short on purpose: the hold is a greeting, not an endurance test.
   holdSeconds: 0.9,
   // Advisory only. The server enforces the real ceiling and is the one that

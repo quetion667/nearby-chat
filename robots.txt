@@ -1,4 +1,6 @@
-# Preview build. Delete this file (and the noindex meta in index.html) once the
-# Telegram link in js/copy.js points at the real bot.
+# The page is public now. Crawling is allowed; the API is not a crawl target,
+# and every path under it answers only to POST from an allowed origin anyway.
 User-agent: *
-Disallow: /
+Allow: /
+
+Sitemap: https://talktonearby.com/sitemap.xml
